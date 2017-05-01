@@ -1,6 +1,8 @@
 package org.mortbay.jetty.load.server.http2;
 
 import com.beust.jcommander.JCommander;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import org.eclipse.jetty.http2.server.HTTP2CServerConnectionFactory;
 import org.eclipse.jetty.http2.server.HTTP2ServerConnection;
 import org.eclipse.jetty.io.Connection;
@@ -10,6 +12,7 @@ import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.ServletHandler;
+import org.eclipse.jetty.toolchain.perf.PlatformMonitor;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 
@@ -18,6 +21,10 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  *
@@ -34,6 +41,12 @@ public class Http2Server
     Server server;
 
     ServerConnector serverConnector;
+
+    private static PlatformMonitor MONITOR = new PlatformMonitor();
+
+    private static PlatformMonitor.Start START;
+
+    private static PlatformMonitor.Stop STOP;
 
     public static void main( String[] args )
         throws Exception
@@ -63,7 +76,9 @@ public class Http2Server
         server.addConnector( serverConnector );
         ServletHandler servletHandler = new ServletHandler();
         servletHandler.addServletWithMapping( SimpleServlet.class, "/simple" );
-        servletHandler.addServletWithMapping( SimpleServlet.class, "/exit" );
+        servletHandler.addServletWithMapping( ExitServlet.class, "/exit" );
+        servletHandler.addServletWithMapping( MonitorStartServlet.class, "/start" );
+        servletHandler.addServletWithMapping( MonitorStopServlet.class, "/stop" );
         server.setHandler( servletHandler );
         server.start();
     }
@@ -115,11 +130,76 @@ public class Http2Server
         protected void doGet( HttpServletRequest req, HttpServletResponse response )
             throws ServletException, IOException
         {
-            LOG.info( "exit" );
+            LOG.info( "ExitServlet#get -> exit" );
             System.exit( 0 );
         }
+    }
 
+    public static class MonitorStartServlet
+        extends HttpServlet
+    {
+        @Override
+        protected void doGet( HttpServletRequest req, HttpServletResponse response )
+            throws ServletException, IOException
+        {
+            LOG.info( "MonitorStartServlet#get" );
+            System.gc();
+            START = MONITOR.start();
+        }
+    }
 
+    public static class MonitorStopServlet
+        extends HttpServlet
+    {
+        @Override
+        protected void doGet( HttpServletRequest req, HttpServletResponse response )
+            throws ServletException, IOException
+        {
+            LOG.info( "MonitorStopServlet#get" );
+            STOP = MONITOR.stop();
+
+            Map<String, Object> run = new LinkedHashMap<>();
+            Map<String, Object> config = new LinkedHashMap<>();
+            run.put( "config", config );
+            config.put( "cores", START.cores );
+            config.put( "totalMemory", new Measure( START.gibiBytes( START.totalMemory ), "GiB" ) );
+            config.put( "os", START.os );
+            config.put( "jvm", START.jvm );
+            config.put( "totalHeap", new Measure( START.gibiBytes( START.heap.getMax() ), "GiB" ) );
+            config.put( "date", new Date( START.date ).toString() );
+            Map<String, Object> results = new LinkedHashMap<>();
+            run.put( "results", results );
+            results.put( "cpu", new Measure( STOP.percent( STOP.cpuTime, STOP.time ) / START.cores, "%" ) );
+            results.put( "jitTime", new Measure( STOP.jitTime, "ms" ) );
+            Map<String, Object> latency = new LinkedHashMap<>();
+            //results.put( "latency", latency );
+            //latency.put( "min", new Measure( convert( histogram.getMinValue() ), "\u00B5s" ) );
+            //latency.put( "p50", new Measure( convert( histogram.getValueAtPercentile( 50D ) ), "\u00B5s" ) );
+            //latency.put( "p99", new Measure( convert( histogram.getValueAtPercentile( 99D ) ), "\u00B5s" ) );
+            //latency.put( "max", new Measure( convert( histogram.getMaxValue() ), "\u00B5s" ) );
+            //Map<String, Object> threadPool = new LinkedHashMap<>();
+            //results.put( "threadPool", threadPool );
+            //threadPool.put( "tasks", this.threadPool.getTasks() );
+            //threadPool.put( "queueSizeMax", this.threadPool.getMaxQueueSize() );
+            //threadPool.put( "activeThreadsMax", this.threadPool.getMaxActiveThreads() );
+            //threadPool.put("queueLatencyAverage", new Measure(TimeUnit.NANOSECONDS.toMillis(this.threadPool.getAverageQueueLatency()), "ms"));
+            //threadPool.put("queueLatencyMax", new Measure(TimeUnit.NANOSECONDS.toMillis(this.threadPool.getMaxQueueLatency()), "ms"));
+            //threadPool.put("taskTimeAverage", new Measure(TimeUnit.NANOSECONDS.toMillis(this.threadPool.getAverageTaskLatency()), "ms"));
+            //threadPool.put("taskTimeMax", new Measure(TimeUnit.NANOSECONDS.toMillis(this.threadPool.getMaxTaskLatency()), "ms"));
+            Map<String, Object> gc = new LinkedHashMap<>();
+            results.put( "gc", gc );
+            gc.put( "youngCount", STOP.youngCount );
+            gc.put( "youngTime", new Measure( STOP.youngTime, "ms" ) );
+            gc.put( "oldCount", STOP.oldCount );
+            gc.put( "oldTime", new Measure( STOP.oldTime, "ms" ) );
+            gc.put( "youngGarbage", new Measure( STOP.mebiBytes( STOP.edenBytes + STOP.survivorBytes ), "MiB" ) );
+            gc.put( "oldGarbage", new Measure( STOP.mebiBytes( STOP.tenuredBytes ), "MiB" ) );
+
+            new ObjectMapper( ) //
+                .findAndRegisterModules() //
+                .enable( SerializationFeature.INDENT_OUTPUT ) //
+                .writeValue( response.getWriter(), run );
+        }
     }
 
     public int getPort()
@@ -130,5 +210,16 @@ public class Http2Server
     public void setPort( int port )
     {
         this.port = port;
+    }
+
+    private static class Measure
+        extends HashMap<String, Object>
+    {
+        public Measure( Object value, String unit )
+        {
+            super( 2 );
+            put( "value", value );
+            put( "unit", unit );
+        }
     }
 }

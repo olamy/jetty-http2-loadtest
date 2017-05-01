@@ -25,6 +25,8 @@ public class Http2LoadClient
 
     private String host;
 
+    HttpClient httpClient;
+
     public static void main( String[] args )
         throws Exception
     {
@@ -49,6 +51,11 @@ public class Http2LoadClient
         throws Exception
     {
 
+        HTTP2Client http2Client = new HTTP2Client();
+        HttpClientTransport httpClientTransport = new HttpClientTransportOverHTTP2( http2Client );
+        httpClient = new HttpClient( httpClientTransport, null );
+        httpClient.start();
+        startServerMonitor();
         LoadGenerator loadGenerator = //
             new LoadGenerator.Builder() //
                 .host( getHost() ) //
@@ -65,17 +72,28 @@ public class Http2LoadClient
 
         loadGenerator.begin().join();
         LOG.debug( "#run done" );
+        stopServerMonitor();
+        httpClient.stop();
     }
 
     public void stopServer()
         throws Exception
     {
-        HTTP2Client http2Client = new HTTP2Client();
-        HttpClientTransport httpClientTransport = new HttpClientTransportOverHTTP2( http2Client );
-        HttpClient httpClient = new HttpClient( httpClientTransport, null );
-        httpClient.start();
         httpClient.newRequest( "localhost", port ).path( "/exit" ).send();
+    }
 
+    public void startServerMonitor()
+        throws Exception
+    {
+        httpClient.newRequest( "localhost", port ).path( "/start" ).send();
+    }
+
+    public void stopServerMonitor()
+        throws Exception
+    {
+        String json =
+            httpClient.newRequest( "localhost", port ).path( "/stop" ).send().getContentAsString();
+        LOG.debug( "json monitor: {}", json );
     }
 
     public int getPort()
