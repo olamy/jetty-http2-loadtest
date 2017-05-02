@@ -1,6 +1,7 @@
 package org.mortbay.jetty.load.client.http2;
 
 import com.beust.jcommander.JCommander;
+import org.HdrHistogram.Histogram;
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.HttpClientTransport;
 import org.eclipse.jetty.http2.client.HTTP2Client;
@@ -10,6 +11,8 @@ import org.eclipse.jetty.util.log.Logger;
 import org.mortbay.jetty.load.generator.HTTP2ClientTransportBuilder;
 import org.mortbay.jetty.load.generator.LoadGenerator;
 import org.mortbay.jetty.load.generator.Resource;
+import org.mortbay.jetty.load.generator.listeners.CollectorInformations;
+import org.mortbay.jetty.load.generator.listeners.report.GlobalSummaryListener;
 
 import java.util.concurrent.TimeUnit;
 
@@ -51,9 +54,8 @@ public class Http2LoadClient
         throws Exception
     {
 
-        HTTP2Client http2Client = new HTTP2Client();
-        HttpClientTransport httpClientTransport = new HttpClientTransportOverHTTP2( http2Client );
-        httpClient = new HttpClient( httpClientTransport, null );
+        GlobalSummaryListener globalSummaryListener = new GlobalSummaryListener();
+        httpClient = new HttpClient( new HttpClientTransportOverHTTP2( new HTTP2Client() ), null );
         httpClient.start();
         startServerMonitor();
         LoadGenerator loadGenerator = //
@@ -68,12 +70,18 @@ public class Http2LoadClient
                 .resourceRate( 5000 ) //
                 .runFor( runMinutes, TimeUnit.MINUTES ) //
                 .scheme( "http" ) //
+                .resourceListener( globalSummaryListener ) //
                 .build();
 
         loadGenerator.begin().join();
         LOG.debug( "#run done" );
         stopServerMonitor();
         httpClient.stop();
+
+        Histogram histogram = globalSummaryListener.getLatencyTimeHistogram().getIntervalHistogram();
+        CollectorInformations collectorInformations = new CollectorInformations( histogram );
+        LOG.info( "collectorInformations: {}", collectorInformations.toString( true ));
+
     }
 
     public void stopServer()
