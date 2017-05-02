@@ -62,6 +62,7 @@
               <goal>shade</goal>
             </goals>
             <configuration>
+              <finalName>${project.artifactId}-uber</finalName>
               <shadedArtifactAttached>true</shadedArtifactAttached>
               <shadedClassifierName>uber</shadedClassifierName>
               <transformers>

@@ -72,6 +72,7 @@ public class Http2Server
         serverConnector = new ServerConnector( server, //
                                                new H2CConnectionFactory( new HttpConfiguration() ) //
                                                    .recycleHttpChannels( this.recycleHttpChannels ) );
+        LOG.info( "recycleHttpChannels: {}", recycleHttpChannels );
         serverConnector.setPort( this.port );
         server.addConnector( serverConnector );
         ServletHandler servletHandler = new ServletHandler();
