@@ -72,9 +72,16 @@ public class Http2LoadClient
                 .scheme( "http" ) //
                 .resourceListener( globalSummaryListener ) //
                 .build();
-        LOG.info( "#run start" );
-        loadGenerator.begin().join();
-        LOG.info( "#run done" );
+        try
+        {
+            LOG.info( "#run start" );
+            loadGenerator.begin().join();
+            LOG.info( "#run done" );
+        }
+        catch ( Throwable e )
+        {
+            LOG.info( "fail to run load test", e );
+        }
         stopServerMonitor();
         httpClient.stop();
 
