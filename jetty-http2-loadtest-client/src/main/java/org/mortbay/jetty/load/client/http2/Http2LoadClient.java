@@ -83,7 +83,6 @@ public class Http2LoadClient
             LOG.info( "fail to run load test", e );
         }
         stopServerMonitor();
-        httpClient.stop();
 
         Histogram histogram = globalSummaryListener.getLatencyTimeHistogram().getIntervalHistogram();
         CollectorInformations collectorInformations = new CollectorInformations( histogram );
@@ -94,7 +93,18 @@ public class Http2LoadClient
         LOG.info( "4xxx: " + globalSummaryListener.getResponses4xx() );
         LOG.info( "5xxx: " + globalSummaryListener.getResponses5xx() );
 
+        String stopServer = startArgs.getParams().get( "stopServer" );
+        if ( Boolean.parseBoolean( stopServer ) )
+        {
+            stopServer();
+            LOG.info( "server stopped" );
+        }
+        else
+        {
+            LOG.info( "not stopping server" );
+        }
 
+        httpClient.stop();
     }
 
     public void stopServer()
