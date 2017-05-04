@@ -12,6 +12,7 @@ import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.ServletHandler;
+import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.toolchain.perf.PlatformMonitor;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
@@ -79,7 +80,8 @@ public class Http2Server
         servletHandler.addServletWithMapping( SimpleServlet.class, "/simple" );
         servletHandler.addServletWithMapping( ExitServlet.class, "/exit" );
         servletHandler.addServletWithMapping( MonitorStartServlet.class, "/start" );
-        servletHandler.addServletWithMapping( MonitorStopServlet.class, "/stop" );
+        //servletHandler.addServletWithMapping( MonitorStopServlet.class, "/stop" );
+        servletHandler.addServletWithMapping( new ServletHolder( new MonitorStopServlet( this ) ), "/stop" );
         server.setHandler( servletHandler );
         server.start();
     }
@@ -152,6 +154,14 @@ public class Http2Server
     public static class MonitorStopServlet
         extends HttpServlet
     {
+
+        Http2Server http2Server;
+
+        public MonitorStopServlet( Http2Server http2Server )
+        {
+            this.http2Server = http2Server;
+        }
+
         @Override
         protected void doGet( HttpServletRequest req, HttpServletResponse response )
             throws ServletException, IOException
@@ -162,6 +172,7 @@ public class Http2Server
             Map<String, Object> run = new LinkedHashMap<>();
             Map<String, Object> config = new LinkedHashMap<>();
             run.put( "config", config );
+            config.put( "recycleHttpChannels", http2Server.recycleHttpChannels );
             config.put( "cores", START.cores );
             config.put( "totalMemory", new Measure( START.gibiBytes( START.totalMemory ), "GiB" ) );
             config.put( "os", START.os );
@@ -196,7 +207,7 @@ public class Http2Server
             gc.put( "youngGarbage", new Measure( STOP.mebiBytes( STOP.edenBytes + STOP.survivorBytes ), "MiB" ) );
             gc.put( "oldGarbage", new Measure( STOP.mebiBytes( STOP.tenuredBytes ), "MiB" ) );
 
-            new ObjectMapper( ) //
+            new ObjectMapper() //
                 .findAndRegisterModules() //
                 .enable( SerializationFeature.INDENT_OUTPUT ) //
                 .writeValue( response.getWriter(), run );

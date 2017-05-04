@@ -19,7 +19,7 @@
 
   <properties>
     <alpn.version>8.1.9.v20160720</alpn.version>
-    <jetty.version>9.4.5-SNAPSHOT</jetty.version>
+    <jetty.version>9.4.6-SNAPSHOT</jetty.version>
     <loadgenerator.version>1.0.0-SNAPSHOT</loadgenerator.version>
   </properties>
 
@@ -56,6 +56,11 @@
       <dependency>
         <groupId>org.mortbay.jetty.loadgenerator</groupId>
         <artifactId>jetty-load-generator-collector</artifactId>
+        <version>${loadgenerator.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.mortbay.jetty.loadgenerator</groupId>
+        <artifactId>jetty-load-generator-starter</artifactId>
         <version>${loadgenerator.version}</version>
       </dependency>
       <dependency>
@@ -240,6 +245,18 @@
         <property>
           <name>java.version</name>
           <value>1.8.0_121</value>
+        </property>
+      </activation>
+      <properties>
+        <alpn.version>8.1.11.v20170118</alpn.version>
+      </properties>
+    </profile>
+    <profile>
+      <id>8u131</id>
+      <activation>
+        <property>
+          <name>java.version</name>
+          <value>1.8.0_131</value>
         </property>
       </activation>
       <properties>

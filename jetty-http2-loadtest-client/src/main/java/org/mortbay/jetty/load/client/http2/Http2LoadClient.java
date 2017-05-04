@@ -3,7 +3,6 @@ package org.mortbay.jetty.load.client.http2;
 import com.beust.jcommander.JCommander;
 import org.HdrHistogram.Histogram;
 import org.eclipse.jetty.client.HttpClient;
-import org.eclipse.jetty.client.HttpClientTransport;
 import org.eclipse.jetty.http2.client.HTTP2Client;
 import org.eclipse.jetty.http2.client.http.HttpClientTransportOverHTTP2;
 import org.eclipse.jetty.util.log.Log;
@@ -13,7 +12,12 @@ import org.mortbay.jetty.load.generator.LoadGenerator;
 import org.mortbay.jetty.load.generator.Resource;
 import org.mortbay.jetty.load.generator.listeners.CollectorInformations;
 import org.mortbay.jetty.load.generator.listeners.report.GlobalSummaryListener;
+import org.mortbay.jetty.load.generator.starter.LoadGeneratorStarterArgs;
 
+import java.io.BufferedWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -24,9 +28,7 @@ public class Http2LoadClient
 
     private static final Logger LOG = Log.getLogger( Http2LoadClient.class );
 
-    private int port, runMinutes;
-
-    private String host;
+    private LoadGeneratorStarterArgs startArgs;
 
     HttpClient httpClient;
 
@@ -43,11 +45,8 @@ public class Http2LoadClient
 
     static void parseArguments( String[] args, Http2LoadClient http2LoadClient )
     {
-        ClientStartArgs clientStartArgs = new ClientStartArgs();
-        new JCommander( clientStartArgs, args );
-        http2LoadClient.port = clientStartArgs.getPort();
-        http2LoadClient.host = clientStartArgs.getHost();
-        http2LoadClient.runMinutes = clientStartArgs.getRunMinutes();
+        http2LoadClient.startArgs = new LoadGeneratorStarterArgs();
+        new JCommander( http2LoadClient.startArgs, args );
     }
 
     public void run()
@@ -60,67 +59,64 @@ public class Http2LoadClient
         startServerMonitor();
         LoadGenerator loadGenerator = //
             new LoadGenerator.Builder() //
-                .host( getHost() ) //
-                .port( getPort() ).httpClientTransportBuilder( new HTTP2ClientTransportBuilder() ) //
+                .host( startArgs.getHost() == null ? "localhost" : startArgs.getHost() ) //
+                .port( startArgs.getPort() ) //
+                .httpClientTransportBuilder( new HTTP2ClientTransportBuilder() ) //
                 .resource( new Resource( "/simple" ) ) //
                 .warmupIterationsPerThread( 2 ) //
-                .iterationsPerThread( 2 ) //
-                .threads( 5 ) //
-                .usersPerThread( 5 ) //
-                .resourceRate( 5000 ) //
-                .runFor( runMinutes, TimeUnit.MINUTES ) //
+                .iterationsPerThread( startArgs.getRunIteration() < 1 ? 2 : startArgs.getRunIteration() ) //
+                .threads( startArgs.getThreads() < 1 ? 5 : startArgs.getThreads() ) //
+                .usersPerThread( startArgs.getUsers() < 1 ? 5 : startArgs.getUsers() ) //
+                .resourceRate( startArgs.getTransactionRate() <= 1 ? 5000 : startArgs.getTransactionRate() ) //
+                .runFor( startArgs.getRunningTime(), TimeUnit.MINUTES ) //
                 .scheme( "http" ) //
                 .resourceListener( globalSummaryListener ) //
                 .build();
-
+        LOG.info( "#run start" );
         loadGenerator.begin().join();
-        LOG.debug( "#run done" );
+        LOG.info( "#run done" );
         stopServerMonitor();
         httpClient.stop();
 
         Histogram histogram = globalSummaryListener.getLatencyTimeHistogram().getIntervalHistogram();
         CollectorInformations collectorInformations = new CollectorInformations( histogram );
-        LOG.info( "collectorInformations: {}", collectorInformations.toString( true ));
+        LOG.info( "collectorInformations: {}", collectorInformations.toString( true ) );
+        LOG.info( "1xxx: " + globalSummaryListener.getResponses1xx() );
+        LOG.info( "2xxx: " + globalSummaryListener.getResponses2xx() );
+        LOG.info( "3xxx: " + globalSummaryListener.getResponses3xx() );
+        LOG.info( "4xxx: " + globalSummaryListener.getResponses4xx() );
+        LOG.info( "5xxx: " + globalSummaryListener.getResponses5xx() );
+
 
     }
 
     public void stopServer()
         throws Exception
     {
-        httpClient.newRequest( "localhost", port ).path( "/exit" ).send();
+        httpClient.newRequest( "localhost", startArgs.getPort() ).path( "/exit" ).send();
     }
 
     public void startServerMonitor()
         throws Exception
     {
-        httpClient.newRequest( "localhost", port ).path( "/start" ).send();
+        httpClient.newRequest( "localhost", startArgs.getPort() ).path( "/start" ).send();
     }
 
     public void stopServerMonitor()
         throws Exception
     {
-        String json =
-            httpClient.newRequest( "localhost", port ).path( "/stop" ).send().getContentAsString();
-        LOG.debug( "json monitor: {}", json );
+        String json = httpClient.newRequest( "localhost", startArgs.getPort() ) //
+            .path( "/stop" ) //
+            .send() //
+            .getContentAsString();
+        LOG.info( "json monitor: {}", json );
+        Path result = Paths.get( "./result.json" );
+        Files.deleteIfExists( result );
+
+        try (BufferedWriter bufferedWriter = Files.newBufferedWriter( result ))
+        {
+            bufferedWriter.write( json );
+        }
     }
 
-    public int getPort()
-    {
-        return port;
-    }
-
-    public void setPort( int port )
-    {
-        this.port = port;
-    }
-
-    public String getHost()
-    {
-        return host;
-    }
-
-    public void setHost( String host )
-    {
-        this.host = host;
-    }
 }
