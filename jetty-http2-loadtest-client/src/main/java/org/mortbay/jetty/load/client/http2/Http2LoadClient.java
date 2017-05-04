@@ -18,6 +18,8 @@ import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -35,6 +37,7 @@ public class Http2LoadClient
     public static void main( String[] args )
         throws Exception
     {
+        LOG.debug( "start with args: {}", Arrays.asList(args) );
         Http2LoadClient http2LoadClient = new Http2LoadClient();
         parseArguments( args, http2LoadClient );
         http2LoadClient.run();
@@ -52,7 +55,7 @@ public class Http2LoadClient
     public void run()
         throws Exception
     {
-
+        LOG.debug( "http2LoadClient#run" );
         GlobalSummaryListener globalSummaryListener = new GlobalSummaryListener();
         httpClient = new HttpClient( new HttpClientTransportOverHTTP2( new HTTP2Client() ), null );
         httpClient.start();
