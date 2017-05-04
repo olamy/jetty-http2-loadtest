@@ -72,6 +72,7 @@ public class Http2LoadClient
                 .scheme( "http" ) //
                 .resourceListener( globalSummaryListener ) //
                 .build();
+
         try
         {
             LOG.info( "#run start" );
@@ -92,6 +93,7 @@ public class Http2LoadClient
         LOG.info( "3xxx: " + globalSummaryListener.getResponses3xx() );
         LOG.info( "4xxx: " + globalSummaryListener.getResponses4xx() );
         LOG.info( "5xxx: " + globalSummaryListener.getResponses5xx() );
+        LOG.info( "loadGenerator.config: {}", loadGenerator.getConfig().toString() );
 
         String stopServer = startArgs.getParams().get( "stopServer" );
         if ( Boolean.parseBoolean( stopServer ) )
