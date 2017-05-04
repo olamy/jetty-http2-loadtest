@@ -40,7 +40,14 @@ public class Http2LoadClient
         LOG.debug( "start with args: {}", Arrays.asList(args) );
         Http2LoadClient http2LoadClient = new Http2LoadClient();
         parseArguments( args, http2LoadClient );
-        http2LoadClient.run();
+        try
+        {
+            http2LoadClient.run();
+        }
+        catch ( Throwable e )
+        {
+            e.printStackTrace();
+        }
         LOG.debug( "#main done" );
         System.exit( 0 );
     }
@@ -112,16 +119,10 @@ public class Http2LoadClient
         httpClient.stop();
     }
 
-    public void stopServer()
-        throws Exception
-    {
-        httpClient.newRequest( "localhost", startArgs.getPort() ).path( "/exit" ).send();
-    }
-
     public void startServerMonitor()
         throws Exception
     {
-        httpClient.newRequest( "localhost", startArgs.getPort() ).path( "/start" ).send();
+        httpClient.newRequest( "localhost", startArgs.getPort() ).path( "/start" ).send(  );
     }
 
     public void stopServerMonitor()
@@ -139,6 +140,12 @@ public class Http2LoadClient
         {
             bufferedWriter.write( json );
         }
+    }
+
+    public void stopServer()
+        throws Exception
+    {
+        httpClient.newRequest( "localhost", startArgs.getPort() ).path( "/exit" ).send( null );
     }
 
 }
