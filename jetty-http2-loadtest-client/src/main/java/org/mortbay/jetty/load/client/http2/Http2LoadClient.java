@@ -1,6 +1,8 @@
 package org.mortbay.jetty.load.client.http2;
 
 import com.beust.jcommander.JCommander;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import org.HdrHistogram.Histogram;
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.http2.client.HTTP2Client;
@@ -15,11 +17,14 @@ import org.mortbay.jetty.load.generator.listeners.report.GlobalSummaryListener;
 import org.mortbay.jetty.load.generator.starter.LoadGeneratorStarterArgs;
 
 import java.io.BufferedWriter;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
-import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -37,7 +42,7 @@ public class Http2LoadClient
     public static void main( String[] args )
         throws Exception
     {
-        LOG.debug( "start with args: {}", Arrays.asList(args) );
+        LOG.debug( "start with args: {}", Arrays.asList( args ) );
         Http2LoadClient http2LoadClient = new Http2LoadClient();
         parseArguments( args, http2LoadClient );
         try
@@ -93,17 +98,51 @@ public class Http2LoadClient
         {
             LOG.info( "fail to run load test", e );
         }
-        stopServerMonitor();
+        String json = stopServerMonitor();
+
+        ObjectMapper objectMapper = new ObjectMapper() //
+            .findAndRegisterModules() //
+            .enable( SerializationFeature.INDENT_OUTPUT );
+
+        Map<String, Object> result = objectMapper.readValue( json, Map.class );
+
+        Map<String, Object> responses = new HashMap<>();
+        responses.put( "1xxx", Long.toString( globalSummaryListener.getResponses1xx().intValue() ) );
+        responses.put( "2xxx", Long.toString( globalSummaryListener.getResponses2xx().intValue() ) );
+        responses.put( "3xxx", Integer.toString( globalSummaryListener.getResponses3xx().intValue() ) );
+        responses.put( "4xxx", Integer.toString( globalSummaryListener.getResponses4xx().intValue() ) );
+        responses.put( "5xxx", Integer.toString( globalSummaryListener.getResponses5xx().intValue() ) );
+        result.put( "responses", responses );
+
+        SimpleDateFormat simpleDateFormat = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss z" );
 
         Histogram histogram = globalSummaryListener.getLatencyTimeHistogram().getIntervalHistogram();
         CollectorInformations collectorInformations = new CollectorInformations( histogram );
-        LOG.info( "collectorInformations: {}", collectorInformations.toString( true ) );
-        LOG.info( "1xxx: " + globalSummaryListener.getResponses1xx() );
-        LOG.info( "2xxx: " + globalSummaryListener.getResponses2xx() );
-        LOG.info( "3xxx: " + globalSummaryListener.getResponses3xx() );
-        LOG.info( "4xxx: " + globalSummaryListener.getResponses4xx() );
-        LOG.info( "5xxx: " + globalSummaryListener.getResponses5xx() );
-        LOG.info( "loadGenerator.config: {}", loadGenerator.getConfig().toString() );
+        Map<String, Object> latency = new HashMap<>();
+        latency.put( "totalCount", collectorInformations.getTotalCount() );
+        latency.put( "minValue", TimeUnit.NANOSECONDS.toMillis( collectorInformations.getMinValue() ) );
+        latency.put( "meanValue", TimeUnit.NANOSECONDS.toMillis( Math.round( collectorInformations.getMean() ) ) );
+        latency.put( "maxValue", TimeUnit.NANOSECONDS.toMillis( collectorInformations.getMaxValue() ) );
+        latency.put( "value50", TimeUnit.NANOSECONDS.toMillis( collectorInformations.getValue50() ) );
+        latency.put( "value90", TimeUnit.NANOSECONDS.toMillis( collectorInformations.getValue90() ) );
+        latency.put( "start", simpleDateFormat.format( collectorInformations.getStartTimeStamp() ) );
+        latency.put( "end", simpleDateFormat.format( collectorInformations.getEndTimeStamp() ) );
+        latency.put( "loadGenerator.config", loadGenerator.getConfig().toString() );
+
+        result.put( "latency", latency );
+
+        Path resultJson = Paths.get( "./result.json" );
+        Files.deleteIfExists( resultJson );
+        StringWriter stringWriter = new StringWriter();
+        objectMapper.writeValue( stringWriter, result );
+        ;
+        json = stringWriter.toString();
+        try (BufferedWriter bufferedWriter = Files.newBufferedWriter( resultJson ))
+        {
+            objectMapper.writeValue( bufferedWriter, json );
+        }
+
+        LOG.info( "json monitor: {}", json );
 
         String stopServer = startArgs.getParams().get( "stopServer" );
         if ( Boolean.parseBoolean( stopServer ) )
@@ -122,24 +161,19 @@ public class Http2LoadClient
     public void startServerMonitor()
         throws Exception
     {
-        httpClient.newRequest( "localhost", startArgs.getPort() ).path( "/start" ).send(  );
+        httpClient.newRequest( "localhost", startArgs.getPort() ).path( "/start" ).send();
     }
 
-    public void stopServerMonitor()
+    public String stopServerMonitor()
         throws Exception
     {
         String json = httpClient.newRequest( "localhost", startArgs.getPort() ) //
             .path( "/stop" ) //
             .send() //
             .getContentAsString();
-        LOG.info( "json monitor: {}", json );
-        Path result = Paths.get( "./result.json" );
-        Files.deleteIfExists( result );
 
-        try (BufferedWriter bufferedWriter = Files.newBufferedWriter( result ))
-        {
-            bufferedWriter.write( json );
-        }
+        return json;
+
     }
 
     public void stopServer()
